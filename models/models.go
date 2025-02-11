@@ -9,6 +9,11 @@ type RegisterUserRequest struct {
 	Password  string `json:"password" validate:"required,min=8"`
 }
 
+type LoginUserRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
 type User struct {
 	CreatedAd     time.Time `json:"created_at"`
 	FirstName     string    `json:"first_name"`

@@ -35,3 +35,42 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	)
 	return err
 }
+
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, first_name, last_name, email, password
+FROM users
+WHERE email = $1
+LIMIT 1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.FirstName,
+		&i.LastName,
+		&i.Email,
+		&i.Password,
+	)
+	return i, err
+}
+
+const saveUserToken = `-- name: SaveUserToken :exec
+INSERT INTO tokens (
+  user_id, token
+) VALUES ( $1, $2 )
+ON CONFLICT ( user_id )
+DO UPDATE
+SET token = $2
+`
+
+type SaveUserTokenParams struct {
+	UserID pgtype.UUID
+	Token  []byte
+}
+
+func (q *Queries) SaveUserToken(ctx context.Context, arg SaveUserTokenParams) error {
+	_, err := q.db.Exec(ctx, saveUserToken, arg.UserID, arg.Token)
+	return err
+}

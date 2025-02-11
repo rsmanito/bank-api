@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"log"
+	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rsmanito/bank-api/models"
@@ -11,7 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func (s *Service) RegisterUser(req *models.RegisterUserRequest) error {
+func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterUserRequest) error {
 	uuid4 := uuid.New()
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 8)
@@ -32,4 +34,37 @@ func (s *Service) RegisterUser(req *models.RegisterUserRequest) error {
 	}
 
 	return nil
+}
+
+func (s *Service) LoginUser(ctx context.Context, req *models.LoginUserRequest) (string, error) {
+	user, err := s.st.GetUserByEmail(ctx, req.Email)
+	if err != nil {
+		log.Default().Println("Failed to get user: ", err)
+		return "", err
+	}
+
+	if err := bcrypt.CompareHashAndPassword(user.Password, []byte(req.Password)); err != nil {
+		return "", models.ErrInvalidCreds
+	}
+
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": user.ID,
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(24 * time.Hour).Unix(),
+	}).SignedString([]byte("supersecret"))
+	if err != nil {
+		log.Default().Println("Failed to create token: ", err)
+		return "", err
+	}
+
+	err = s.st.SaveUserToken(ctx, postgres.SaveUserTokenParams{
+		UserID: pgtype.UUID{Bytes: user.ID.Bytes, Valid: true},
+		Token:  []byte(token),
+	})
+	if err != nil {
+		log.Default().Println("Failed to save token: ", err)
+		return "", err
+	}
+
+	return token, nil
 }

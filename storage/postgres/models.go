@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Token struct {
+	UserID pgtype.UUID
+	Token  []byte
+}
+
 type User struct {
 	ID        pgtype.UUID
 	FirstName string

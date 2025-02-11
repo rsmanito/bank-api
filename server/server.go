@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -32,6 +33,7 @@ func New(st *storage.Storage) *Server {
 
 func (s *Server) registerRoutes() {
 	s.router.Post("/auth/register", s.handleRegister)
+	s.router.Post("/auth/login", s.handleLogin)
 }
 
 func (s *Server) Run(listenAddr string) {
@@ -45,7 +47,25 @@ func (s *Server) handleRegister(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return s.service.RegisterUser(r)
+	return s.service.RegisterUser(c.Context(), r)
+}
+
+func (s *Server) handleLogin(c fiber.Ctx) error {
+	r := &models.LoginUserRequest{}
+
+	if err := c.Bind().JSON(r); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	token, err := s.service.LoginUser(c.Context(), r)
+	if err != nil {
+		if errors.Is(err, models.ErrInvalidCreds) {
+			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{})
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{"token": token})
 }
 
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
