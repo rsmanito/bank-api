@@ -56,21 +56,23 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	return i, err
 }
 
-const saveUserToken = `-- name: SaveUserToken :exec
+const saveUserTokens = `-- name: SaveUserTokens :exec
 INSERT INTO tokens (
-  user_id, token
-) VALUES ( $1, $2 )
+  user_id, token, refresh_token
+) VALUES ( $1, $2, $3 )
 ON CONFLICT ( user_id )
-DO UPDATE
-SET token = $2
+DO UPDATE SET 
+  token = $2,
+  refresh_token = $3
 `
 
-type SaveUserTokenParams struct {
-	UserID pgtype.UUID
-	Token  []byte
+type SaveUserTokensParams struct {
+	UserID       pgtype.UUID
+	Token        []byte
+	RefreshToken []byte
 }
 
-func (q *Queries) SaveUserToken(ctx context.Context, arg SaveUserTokenParams) error {
-	_, err := q.db.Exec(ctx, saveUserToken, arg.UserID, arg.Token)
+func (q *Queries) SaveUserTokens(ctx context.Context, arg SaveUserTokensParams) error {
+	_, err := q.db.Exec(ctx, saveUserTokens, arg.UserID, arg.Token, arg.RefreshToken)
 	return err
 }

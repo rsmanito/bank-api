@@ -36,15 +36,15 @@ func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterUserRequ
 	return nil
 }
 
-func (s *Service) LoginUser(ctx context.Context, req *models.LoginUserRequest) (string, error) {
+func (s *Service) LoginUser(ctx context.Context, req *models.LoginUserRequest) (res *models.UserLoginResponse, err error) {
 	user, err := s.st.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		log.Default().Println("Failed to get user: ", err)
-		return "", err
+		return res, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword(user.Password, []byte(req.Password)); err != nil {
-		return "", models.ErrInvalidCreds
+		return res, models.ErrInvalidCreds
 	}
 
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -54,17 +54,33 @@ func (s *Service) LoginUser(ctx context.Context, req *models.LoginUserRequest) (
 	}).SignedString([]byte("supersecret"))
 	if err != nil {
 		log.Default().Println("Failed to create token: ", err)
-		return "", err
+		return res, err
 	}
 
-	err = s.st.SaveUserToken(ctx, postgres.SaveUserTokenParams{
-		UserID: pgtype.UUID{Bytes: user.ID.Bytes, Valid: true},
-		Token:  []byte(token),
+	refresh, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": user.ID,
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(30 * 24 * time.Hour).Unix(),
+	}).SignedString([]byte("supersecret"))
+	if err != nil {
+		log.Default().Println("Failed to create token: ", err)
+		return res, err
+	}
+
+	err = s.st.SaveUserTokens(ctx, postgres.SaveUserTokensParams{
+		UserID:       pgtype.UUID{Bytes: user.ID.Bytes, Valid: true},
+		Token:        []byte(token),
+		RefreshToken: []byte(refresh),
 	})
 	if err != nil {
 		log.Default().Println("Failed to save token: ", err)
-		return "", err
+		return res, err
 	}
 
-	return token, nil
+	res = &models.UserLoginResponse{
+		Token:        token,
+		RefreshToken: refresh,
+	}
+
+	return res, nil
 }

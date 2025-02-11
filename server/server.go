@@ -15,7 +15,7 @@ import (
 
 type Service interface {
 	RegisterUser(context.Context, *models.RegisterUserRequest) error
-	LoginUser(context.Context, *models.LoginUserRequest) (string, error)
+	LoginUser(context.Context, *models.LoginUserRequest) (*models.UserLoginResponse, error)
 }
 
 type Server struct {
@@ -67,7 +67,7 @@ func (s *Server) handleLogin(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	token, err := s.service.LoginUser(c.Context(), r)
+	res, err := s.service.LoginUser(c.Context(), r)
 	if err != nil {
 		if errors.Is(err, models.ErrInvalidCreds) {
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
@@ -75,7 +75,7 @@ func (s *Server) handleLogin(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{})
 	}
 
-	return c.Status(http.StatusOK).JSON(fiber.Map{"token": token})
+	return c.Status(http.StatusOK).JSON(res)
 }
 
 func WriteJSON(w http.ResponseWriter, status int, v any) error {

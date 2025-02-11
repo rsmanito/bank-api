@@ -10,7 +10,7 @@ import (
 type Storage interface {
 	CreateUser(context.Context, postgres.CreateUserParams) error
 	GetUserByEmail(context.Context, string) (postgres.User, error)
-	SaveUserToken(context.Context, postgres.SaveUserTokenParams) error
+	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
 }
 
 type Service struct {

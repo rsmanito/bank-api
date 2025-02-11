@@ -9,8 +9,9 @@ import (
 )
 
 type Token struct {
-	UserID pgtype.UUID
-	Token  []byte
+	UserID       pgtype.UUID
+	Token        []byte
+	RefreshToken []byte
 }
 
 type User struct {

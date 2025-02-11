@@ -14,6 +14,11 @@ type LoginUserRequest struct {
 	Password string `json:"password" validate:"required,min=8"`
 }
 
+type UserLoginResponse struct {
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
 type User struct {
 	CreatedAd     time.Time `json:"created_at"`
 	FirstName     string    `json:"first_name"`

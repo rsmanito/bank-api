@@ -9,10 +9,11 @@ FROM users
 WHERE email = $1
 LIMIT 1;
 
--- name: SaveUserToken :exec
+-- name: SaveUserTokens :exec
 INSERT INTO tokens (
-  user_id, token
-) VALUES ( $1, $2 )
+  user_id, token, refresh_token
+) VALUES ( $1, $2, $3 )
 ON CONFLICT ( user_id )
-DO UPDATE
-SET token = $2;
+DO UPDATE SET 
+  token = $2,
+  refresh_token = $3;
