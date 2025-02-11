@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,8 +13,13 @@ import (
 	"github.com/rsmanito/bank-api/storage"
 )
 
+type Service interface {
+	RegisterUser(context.Context, *models.RegisterUserRequest) error
+	LoginUser(context.Context, *models.LoginUserRequest) (string, error)
+}
+
 type Server struct {
-	service *service.Service
+	service Service
 	router  *fiber.App
 }
 
@@ -32,8 +38,12 @@ func New(st *storage.Storage) *Server {
 }
 
 func (s *Server) registerRoutes() {
-	s.router.Post("/auth/register", s.handleRegister)
-	s.router.Post("/auth/login", s.handleLogin)
+	api := s.router.Group("/api/v1")
+	auth := api.Group("/auth")
+	{
+		auth.Post("/register", s.handleRegister)
+		auth.Post("/login", s.handleLogin)
+	}
 }
 
 func (s *Server) Run(listenAddr string) {
