@@ -14,10 +14,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type MockStorage interface{
-		CreateUser(context.Context, postgres.CreateUserParams) error
-		GetUserByEmail(context.Context, string) (postgres.User, error)
-		SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
+type MockStorage interface {
+	CreateUser(context.Context, postgres.CreateUserParams) error
+	GetUserByEmail(context.Context, string) (postgres.User, error)
+	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
 }
 
 type MockStore struct {
@@ -107,14 +107,13 @@ func TestLoginUser_LoginSuccess(t *testing.T) {
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 8)
 
-
 	mockStore.
 		On("GetUserByEmail", mock.Anything, req.Email).
 		Return(postgres.User{
 			Password: hashedPassword,
 		}, nil).
 		Once()
-	
+
 	mockStore.
 		On("SaveUserTokens", mock.Anything, mock.AnythingOfType("postgres.SaveUserTokensParams")).
 		Return(nil).
@@ -134,7 +133,7 @@ func TestLoginUser_GetUserByEmailError(t *testing.T) {
 	svc := &Service{st: mockStore}
 
 	req := &models.LoginUserRequest{
-		Email:   "test@example.com",
+		Email: "test@example.com",
 	}
 
 	expectedErr := errors.New("get user failed")
