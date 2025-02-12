@@ -2,12 +2,12 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v3"
+	"github.com/rsmanito/bank-api/config"
 	"github.com/rsmanito/bank-api/models"
 	"github.com/rsmanito/bank-api/service"
 	"github.com/rsmanito/bank-api/storage"
@@ -16,6 +16,7 @@ import (
 type Service interface {
 	RegisterUser(context.Context, *models.RegisterUserRequest) error
 	LoginUser(context.Context, *models.LoginUserRequest) (*models.UserLoginResponse, error)
+	RefreshToken(context.Context, *models.RefreshTokenRequest) (*models.UserLoginResponse, error)
 }
 
 type Server struct {
@@ -24,9 +25,9 @@ type Server struct {
 }
 
 // New returns a new Server.
-func New(st *storage.Storage) *Server {
+func New(st *storage.Storage, cfg *config.Config) *Server {
 	server := &Server{
-		service: service.New(st),
+		service: service.New(st, cfg),
 		router: fiber.New(fiber.Config{
 			StructValidator: &models.StructValidator{Validator: validator.New()},
 		}),
@@ -43,6 +44,7 @@ func (s *Server) registerRoutes() {
 	{
 		auth.Post("/register", s.handleRegister)
 		auth.Post("/login", s.handleLogin)
+		auth.Post("/refresh", s.handleRefreshToken)
 	}
 }
 
@@ -78,22 +80,17 @@ func (s *Server) handleLogin(c fiber.Ctx) error {
 	return c.Status(http.StatusOK).JSON(res)
 }
 
-func WriteJSON(w http.ResponseWriter, status int, v any) error {
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(status)
-	return json.NewEncoder(w).Encode(v)
-}
+func (s *Server) handleRefreshToken(c fiber.Ctx) error {
+	r := &models.RefreshTokenRequest{}
 
-type apiFunc func(http.ResponseWriter, *http.Request) error
-
-type apiError struct {
-	Error string `json:"error"`
-}
-
-func makeHTTPHandler(f apiFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := f(w, r); err != nil {
-			WriteJSON(w, http.StatusBadRequest, apiError{Error: err.Error()})
-		}
+	if err := c.Bind().JSON(r); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	res, err := s.service.RefreshToken(c.Context(), r)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.Status(http.StatusOK).JSON(res)
 }

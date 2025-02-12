@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type RegisterUserRequest struct {
 	FirstName string `json:"first_name" validate:"required"`
@@ -19,21 +23,14 @@ type UserLoginResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-type User struct {
-	CreatedAd     time.Time `json:"created_at"`
-	FirstName     string    `json:"first_name"`
-	LastName      string    `json:"last_name"`
-	UUID          int64     `json:"id"`
-	AccountNumber int64     `json:"account_number"`
+type RefreshTokenRequest struct {
+	Token        string `json:"token" validate:"required"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
-// NewUser returns a new User.
-func NewUser(firstName, lastName string) *User {
-	return &User{
-		UUID:          1,
-		FirstName:     firstName,
-		LastName:      lastName,
-		AccountNumber: 1,
-		CreatedAd:     time.Now(),
-	}
+type User struct {
+	CreatedAd time.Time `json:"created_at"`
+	FirstName string    `json:"first_name"`
+	LastName  string    `json:"last_name"`
+	ID        uuid.UUID `json:"id"`
 }

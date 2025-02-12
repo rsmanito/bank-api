@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/rsmanito/bank-api/config"
 	"github.com/rsmanito/bank-api/storage"
 	"github.com/rsmanito/bank-api/storage/postgres"
 )
@@ -14,12 +15,14 @@ type Storage interface {
 }
 
 type Service struct {
-	st Storage
+	st  Storage
+	cfg *config.Config
 }
 
 // New returns a new Service.
-func New(st *storage.Storage) *Service {
+func New(st *storage.Storage, cfg *config.Config) *Service {
 	return &Service{
-		st: st,
+		st:  st,
+		cfg: cfg,
 	}
 }
