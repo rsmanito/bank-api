@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -97,7 +97,7 @@ func (s *Service) RefreshToken(ctx context.Context, req *models.RefreshTokenRequ
 	// Validate refresh token
 	refreshClaims, err := s.validateToken(req.RefreshToken, signingKey)
 	if err != nil {
-		if ve, ok := err.(*jwt.ValidationError); ok && ve.Errors&jwt.ValidationErrorExpired != 0 {
+		if errors.Is(err, jwt.ErrTokenExpired) {
 			log.Println("Refresh token is expired")
 			return nil, models.ErrTokensExpired
 		}
@@ -201,7 +201,7 @@ func (s *Service) generateTokens(u *models.User) (string, string, error) {
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": u.ID,
 		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(15 * time.Minute).Unix(),
+		"exp": time.Now().Add(24 * time.Hour).Unix(),
 	}).SignedString(signingKey)
 	if err != nil {
 		log.Default().Println("Failed to create token: ", err)

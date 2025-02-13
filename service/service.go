@@ -12,6 +12,7 @@ import (
 type Storage interface {
 	CreateUser(context.Context, postgres.CreateUserParams) error
 	GetUserByEmail(context.Context, string) (postgres.User, error)
+	GetUserById(context.Context, pgtype.UUID) (postgres.User, error)
 	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
 	GetUserTokens(context.Context, pgtype.UUID) (postgres.Token, error)
 }

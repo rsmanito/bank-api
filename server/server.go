@@ -17,11 +17,13 @@ type Service interface {
 	RegisterUser(context.Context, *models.RegisterUserRequest) error
 	LoginUser(context.Context, *models.LoginUserRequest) (*models.UserLoginResponse, error)
 	RefreshToken(context.Context, *models.RefreshTokenRequest) (*models.UserLoginResponse, error)
+	GetUser(context.Context) (*models.User, error)
 }
 
 type Server struct {
 	service Service
 	router  *fiber.App
+	cfg     *config.Config
 }
 
 // New returns a new Server.
@@ -31,6 +33,7 @@ func New(st *storage.Storage, cfg *config.Config) *Server {
 		router: fiber.New(fiber.Config{
 			StructValidator: &models.StructValidator{Validator: validator.New()},
 		}),
+		cfg: cfg,
 	}
 
 	server.registerRoutes()
@@ -45,6 +48,11 @@ func (s *Server) registerRoutes() {
 		auth.Post("/register", s.handleRegister)
 		auth.Post("/login", s.handleLogin)
 		auth.Post("/refresh", s.handleRefreshToken)
+	}
+	jwtAutorized := api.Group("")
+	jwtAutorized.Use(s.JWTTokenSuppliedMiddleware)
+	{
+		jwtAutorized.Get("/me", s.handleGetMe)
 	}
 }
 
@@ -93,4 +101,12 @@ func (s *Server) handleRefreshToken(c fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusOK).JSON(res)
+}
+
+func (s *Server) handleGetMe(c fiber.Ctx) error {
+	user, err := s.service.GetUser(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(http.StatusOK).JSON(user)
 }
