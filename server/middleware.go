@@ -15,13 +15,12 @@ func (s *Server) JWTTokenSuppliedMiddleware(c fiber.Ctx) error {
 	if h == "" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing token"})
 	}
-	split := strings.Split(c.Get("Authorization"), " ")
-	if split[0] != "Bearer" {
+	split := strings.Split(h, " ")
+	if len(split) != 2 || split[0] != "Bearer" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "bad token format"})
 	}
 
 	token, err := jwt.Parse(split[1], func(token *jwt.Token) (interface{}, error) {
-		// Don't forget to validate the alg is what you expect:
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
