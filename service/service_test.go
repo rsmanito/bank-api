@@ -8,12 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rsmanito/bank-api/config"
 	"github.com/rsmanito/bank-api/models"
-
 	"github.com/rsmanito/bank-api/storage/postgres"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -23,6 +22,7 @@ import (
 type MockStorage interface {
 	CreateUser(context.Context, postgres.CreateUserParams) error
 	GetUserByEmail(context.Context, string) (postgres.User, error)
+	GetUserById(context.Context, pgtype.UUID) (postgres.User, error)
 	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
 	GetUserTokens(context.Context, pgtype.UUID) (postgres.Token, error)
 }
@@ -43,6 +43,11 @@ func (m *MockStore) SaveUserTokens(ctx context.Context, params postgres.SaveUser
 
 func (m *MockStore) GetUserByEmail(ctx context.Context, email string) (postgres.User, error) {
 	args := m.Called(ctx, email)
+	return args.Get(0).(postgres.User), args.Error(1)
+}
+
+func (m *MockStore) GetUserById(ctx context.Context, userId pgtype.UUID) (postgres.User, error) {
+	args := m.Called(ctx, userId)
 	return args.Get(0).(postgres.User), args.Error(1)
 }
 
@@ -479,4 +484,39 @@ func TestRefreshToken_TokensDontMatchStored(t *testing.T) {
 	assert.Nil(t, res)
 
 	mockStore.AssertExpectations(t)
+}
+
+func TestGetMe_Success(t *testing.T) {
+	mockStore := new(MockStore)
+	userID := uuid.New()
+	svc := &Service{
+		st: mockStore,
+	}
+
+	mockStore.
+		On("GetUserById", mock.Anything, mock.MatchedBy(func(p pgtype.UUID) bool {
+			return p.Valid && p.Bytes == userID
+		})).
+		Return(postgres.User{
+			ID: pgtype.UUID{Bytes: userID, Valid: true},
+		}, nil).
+		Once()
+
+	ctx := context.WithValue(context.Background(), "userId", userID.String())
+	_, err := svc.GetUser(ctx)
+
+	assert.NoError(t, err)
+	mockStore.AssertExpectations(t)
+}
+
+func TestGetMe_InvalidId(t *testing.T) {
+	mockStore := new(MockStore)
+	svc := &Service{
+		st: mockStore,
+	}
+
+	ctx := context.WithValue(context.Background(), "userId", "not-a-uuid")
+	_, err := svc.GetUser(ctx)
+
+	assert.ErrorIs(t, err, models.ErrInvalidCreds)
 }
