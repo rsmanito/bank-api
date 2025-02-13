@@ -56,6 +56,19 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	return i, err
 }
 
+const getUserTokens = `-- name: GetUserTokens :one
+SELECT user_id, token, refresh_token
+FROM tokens
+WHERE user_id = $1
+`
+
+func (q *Queries) GetUserTokens(ctx context.Context, userID pgtype.UUID) (Token, error) {
+	row := q.db.QueryRow(ctx, getUserTokens, userID)
+	var i Token
+	err := row.Scan(&i.UserID, &i.Token, &i.RefreshToken)
+	return i, err
+}
+
 const saveUserTokens = `-- name: SaveUserTokens :exec
 INSERT INTO tokens (
   user_id, token, refresh_token

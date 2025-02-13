@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rsmanito/bank-api/config"
 	"github.com/rsmanito/bank-api/storage"
 	"github.com/rsmanito/bank-api/storage/postgres"
@@ -12,6 +13,7 @@ type Storage interface {
 	CreateUser(context.Context, postgres.CreateUserParams) error
 	GetUserByEmail(context.Context, string) (postgres.User, error)
 	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
+	GetUserTokens(context.Context, pgtype.UUID) (postgres.Token, error)
 }
 
 type Service struct {

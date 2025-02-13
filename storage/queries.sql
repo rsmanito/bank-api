@@ -17,3 +17,8 @@ ON CONFLICT ( user_id )
 DO UPDATE SET 
   token = $2,
   refresh_token = $3;
+
+-- name: GetUserTokens :one
+SELECT *
+FROM tokens
+WHERE user_id = $1;

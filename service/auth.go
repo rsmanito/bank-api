@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rsmanito/bank-api/models"
 	"github.com/rsmanito/bank-api/storage/postgres"
@@ -118,6 +119,24 @@ func (s *Service) RefreshToken(ctx context.Context, req *models.RefreshTokenRequ
 		return nil, models.ErrInvalidCreds
 	}
 
+	t, err := s.st.GetUserTokens(ctx, pgtype.UUID{
+		Bytes: userID,
+		Valid: true,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Default().Println("No tokens for user: ", userID)
+			return nil, models.ErrTokensExpired
+		}
+		log.Default().Println("Failed to get user tokens: ", err)
+		return nil, errors.New("failed to refresh tokens")
+	}
+
+	if string(t.Token) != req.Token || string(t.RefreshToken) != req.RefreshToken {
+		log.Default().Println("Tokens do not match with stored")
+		return nil, models.ErrInvalidCreds
+	}
+
 	// Generate new tokens
 	newToken, newRefresh, err := s.generateTokens(&models.User{ID: userID})
 	if err != nil {
@@ -161,6 +180,15 @@ func (s *Service) validateToken(tokenStr string, signingKey []byte) (jwt.MapClai
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("invalid token claims format")
+	}
+
+	// Check expiration
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("token missing 'exp' field")
+	}
+	if time.Now().Unix() > int64(exp) {
+		return nil, ErrTokenExpired
 	}
 
 	return claims, nil

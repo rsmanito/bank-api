@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rsmanito/bank-api/config"
 	"github.com/rsmanito/bank-api/models"
 
@@ -23,6 +24,7 @@ type MockStorage interface {
 	CreateUser(context.Context, postgres.CreateUserParams) error
 	GetUserByEmail(context.Context, string) (postgres.User, error)
 	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
+	GetUserTokens(context.Context, pgtype.UUID) (postgres.Token, error)
 }
 
 type MockStore struct {
@@ -42,6 +44,11 @@ func (m *MockStore) SaveUserTokens(ctx context.Context, params postgres.SaveUser
 func (m *MockStore) GetUserByEmail(ctx context.Context, email string) (postgres.User, error) {
 	args := m.Called(ctx, email)
 	return args.Get(0).(postgres.User), args.Error(1)
+}
+
+func (m *MockStore) GetUserTokens(ctx context.Context, userId pgtype.UUID) (postgres.Token, error) {
+	args := m.Called(ctx, userId)
+	return args.Get(0).(postgres.Token), args.Error(1)
 }
 
 func TestRegisterUser_Success(t *testing.T) {
@@ -266,6 +273,17 @@ func TestRefreshToken_ExpiredAccessValidRefresh(t *testing.T) {
 		RefreshToken: validRefreshToken,
 	}
 
+	// GetUserTokens will be called with the correct userID.
+	mockStore.
+		On("GetUserTokens", mock.Anything, mock.MatchedBy(func(p pgtype.UUID) bool {
+			return p.Valid && p.Bytes == userID
+		})).
+		Return(postgres.Token{
+			Token:        []byte(expiredAccessToken),
+			RefreshToken: []byte(validRefreshToken),
+		}, nil).
+		Once()
+
 	// SaveUserTokens will be called with a SaveUserTokensParams with the correct userID.
 	mockStore.
 		On("SaveUserTokens", mock.Anything, mock.MatchedBy(func(p postgres.SaveUserTokensParams) bool {
@@ -377,6 +395,17 @@ func TestRefreshToken_SaveTokensError(t *testing.T) {
 		RefreshToken: validRefreshToken,
 	}
 
+	// GetUserTokens will be called with the correct userID.
+	mockStore.
+		On("GetUserTokens", mock.Anything, mock.MatchedBy(func(p pgtype.UUID) bool {
+			return p.Valid && p.Bytes == userID
+		})).
+		Return(postgres.Token{
+			Token:        []byte(expiredAccessToken),
+			RefreshToken: []byte(validRefreshToken),
+		}, nil).
+		Once()
+
 	// Database save fails.
 	mockStore.
 		On("SaveUserTokens", mock.Anything, mock.MatchedBy(func(p postgres.SaveUserTokensParams) bool {
@@ -387,6 +416,66 @@ func TestRefreshToken_SaveTokensError(t *testing.T) {
 
 	res, err := svc.RefreshToken(context.Background(), req)
 	assert.EqualError(t, err, "failed to refresh tokens")
+	assert.Nil(t, res)
+
+	mockStore.AssertExpectations(t)
+}
+
+func TestRefreshToken_TokensDontMatchStored(t *testing.T) {
+	mockStore := new(MockStore)
+	userID := uuid.New()
+	svc := &Service{
+		st:  mockStore,
+		cfg: &config.Config{JWT_SIGNING_KEY: "supersecret"},
+	}
+
+	// Create an expired access token.
+	expiredAccessClaims := jwt.MapClaims{
+		"exp": time.Now().Add(-1 * time.Hour).Unix(),
+	}
+	// Create a valid refresh token.
+	validRefreshClaims := jwt.MapClaims{
+		"sub": userID.String(),
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(2 * time.Hour).Unix(),
+	}
+
+	expiredAccessToken := createJWT(expiredAccessClaims, svc.cfg.JWT_SIGNING_KEY)
+	validRefreshToken := createJWT(validRefreshClaims, svc.cfg.JWT_SIGNING_KEY)
+
+	req := &models.RefreshTokenRequest{
+		Token:        expiredAccessToken,
+		RefreshToken: validRefreshToken,
+	}
+
+	// Generate different tokens than the request.
+	storedAccessClaims := jwt.MapClaims{
+		"exp": time.Now().Add(-1 * time.Hour).Unix(),
+		"foo": "bar",
+	}
+	storedRefreshClaims := jwt.MapClaims{
+		"foo": "bar",
+		"sub": userID.String(),
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(2 * time.Hour).Unix(),
+	}
+
+	storedAccessToken := createJWT(storedAccessClaims, svc.cfg.JWT_SIGNING_KEY)
+	storedRefreshToken := createJWT(storedRefreshClaims, svc.cfg.JWT_SIGNING_KEY)
+
+	// GetUserTokens will return different tokens than the request.
+	mockStore.
+		On("GetUserTokens", mock.Anything, mock.MatchedBy(func(p pgtype.UUID) bool {
+			return p.Valid && p.Bytes == userID
+		})).
+		Return(postgres.Token{
+			Token:        []byte(storedAccessToken),
+			RefreshToken: []byte(storedRefreshToken),
+		}, nil).
+		Once()
+
+	res, err := svc.RefreshToken(context.Background(), req)
+	assert.ErrorIs(t, err, models.ErrInvalidCreds)
 	assert.Nil(t, res)
 
 	mockStore.AssertExpectations(t)
