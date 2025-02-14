@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
+	"github.com/rsmanito/bank-api/config"
 	"github.com/rsmanito/bank-api/storage/postgres"
 )
 
@@ -19,13 +20,13 @@ type Storage struct {
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-// TODO: move to env
-var connStr = "user=postgres dbname=postgres password=postgres sslmode=disable"
-
-func (s *Storage) MustMigrate() {
+func (s *Storage) Migrate(cfg *config.Config) {
 	log.Default().Println("Migrating database")
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open(
+		"postgres",
+		cfg.DB_CONN_URL,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -44,9 +45,11 @@ func (s *Storage) MustMigrate() {
 	log.Default().Println("Database migrated")
 }
 
-func New() *Storage {
-	conn, err := pgx.Connect(context.Background(),
-		"postgres://postgres:postgres@localhost:5432/postgres")
+func New(cfg *config.Config) *Storage {
+	conn, err := pgx.Connect(
+		context.Background(),
+		cfg.DB_CONN_URL,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -59,7 +62,7 @@ func New() *Storage {
 	queries := postgres.New(conn)
 
 	st := &Storage{queries}
-	st.MustMigrate()
+	st.Migrate(cfg)
 
 	return st
 }

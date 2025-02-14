@@ -11,7 +11,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	st := storage.New()
+	st := storage.New(cfg)
 
 	s := server.New(st, cfg)
 
