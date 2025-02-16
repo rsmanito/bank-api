@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/rsmanito/bank-api/config"
 	"github.com/rsmanito/bank-api/server"
@@ -11,13 +12,16 @@ import (
 func main() {
 	cfg := config.Load()
 
+	l := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	slog.SetDefault(l)
+
 	st := storage.New(cfg)
 
 	s := server.New(st, cfg)
 
 	go s.Run(cfg.Port)
 
-	log.Default().Printf("Running on port %s", cfg.Port)
+	slog.Info("Running API", "port", cfg.Port)
 
 	select {}
 }

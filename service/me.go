@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -13,7 +13,7 @@ import (
 func (s *Service) GetUser(ctx context.Context) (*models.User, error) {
 	userID, err := uuid.Parse(ctx.Value("userId").(string))
 	if err != nil {
-		log.Printf("Failed to parse subject as UUID: %v", err)
+		slog.Error("Failed to parse 'sub' as UUID", "err", err, "sub", ctx.Value("userId"))
 		return nil, models.ErrInvalidCreds
 	}
 
@@ -22,7 +22,7 @@ func (s *Service) GetUser(ctx context.Context) (*models.User, error) {
 		Valid: true,
 	})
 	if err != nil {
-		log.Default().Println("Failed to fetch user: ", err)
+		slog.Error("Failed to fetch user", "err", err, "userID", userID)
 		return nil, errors.New("failed to fetch user")
 	}
 

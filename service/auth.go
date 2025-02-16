@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -21,7 +21,7 @@ func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterUserRequ
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 8)
 	if err != nil {
-		log.Default().Println("Failed to hash password: %w", err)
+		slog.Error("Failed to hash password", "err", err)
 		return err
 	}
 
@@ -32,7 +32,7 @@ func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterUserRequ
 		Email:     req.Email,
 		Password:  hashedPassword,
 	}); err != nil {
-		log.Default().Println("Failed to create user: %w", err)
+		slog.Error("Failed to create user", "err", err)
 		return err
 	}
 
@@ -42,11 +42,12 @@ func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterUserRequ
 func (s *Service) LoginUser(ctx context.Context, req *models.LoginUserRequest) (res *models.UserLoginResponse, err error) {
 	user, err := s.st.GetUserByEmail(ctx, req.Email)
 	if err != nil {
-		log.Default().Println("Failed to get user: ", err)
+		slog.Error("Failed to get user", "err", err, "email", req.Email)
 		return res, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword(user.Password, []byte(req.Password)); err != nil {
+		slog.Debug("Passwords do not match", "userID", user.ID)
 		return res, models.ErrInvalidCreds
 	}
 
@@ -56,7 +57,7 @@ func (s *Service) LoginUser(ctx context.Context, req *models.LoginUserRequest) (
 		},
 	)
 	if err != nil {
-		log.Default().Println("Failed to generate tokens: ", err)
+		slog.Error("Failed to generate tokens", "err", err)
 		return nil, errors.New("failed to authorize")
 	}
 
@@ -66,7 +67,7 @@ func (s *Service) LoginUser(ctx context.Context, req *models.LoginUserRequest) (
 		RefreshToken: []byte(refresh),
 	})
 	if err != nil {
-		log.Default().Println("Failed to save token: ", err)
+		slog.Error("Failed to save tokens", "err", err, "userID", user.ID)
 		return res, err
 	}
 
@@ -83,39 +84,39 @@ func (s *Service) RefreshToken(ctx context.Context, req *models.RefreshTokenRequ
 	signingKey := []byte(s.cfg.JWT_SIGNING_KEY)
 
 	// Validate Access Token
-	_, err := s.validateToken(req.Token, signingKey)
+	claims, err := s.validateToken(req.Token, signingKey)
 	if err == nil {
-		log.Println("Access token is still valid, returning existing tokens")
+		slog.Debug("Access token is still valid, returning existing tokens", "userID", claims["sub"])
 		return &models.UserLoginResponse{
 			Token:        req.Token,
 			RefreshToken: req.RefreshToken,
 		}, nil
 	}
 
-	log.Printf("Access token invalid or expired: %v", err)
+	slog.Debug("Access token is invalid or expired", "err", err, "userID", claims["sub"])
 
 	// Validate refresh token
 	refreshClaims, err := s.validateToken(req.RefreshToken, signingKey)
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			log.Println("Refresh token is expired")
+			slog.Debug("Refresh token is expired", "userID", refreshClaims["sub"])
 			return nil, models.ErrTokensExpired
 		}
 
-		log.Printf("Failed to parse refresh token: %v", err)
+		slog.Error("Failed to parse refresh token", "err", err, "userID", refreshClaims["sub"])
 		return nil, models.ErrInvalidCreds
 	}
 
 	// Extract user ID from refresh token
 	sub, ok := refreshClaims["sub"].(string)
 	if !ok {
-		log.Println("Refresh token missing 'sub' field")
+		slog.Warn("Refresh token is missing 'sub' field", "userID", refreshClaims["sub"])
 		return nil, models.ErrInvalidCreds
 	}
 
 	userID, err := uuid.Parse(sub)
 	if err != nil {
-		log.Printf("Failed to parse subject as UUID: %v", err)
+		slog.Error("Failed to parse subject as UUID", "err", err)
 		return nil, models.ErrInvalidCreds
 	}
 
@@ -125,22 +126,21 @@ func (s *Service) RefreshToken(ctx context.Context, req *models.RefreshTokenRequ
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Default().Println("No tokens for user: ", userID)
-			return nil, models.ErrTokensExpired
+			slog.Warn("User has no stored tokens", "userID", userID)
+		} else {
+			slog.Error("Failed to get user tokens", "err", err, "userID", userID)
 		}
-		log.Default().Println("Failed to get user tokens: ", err)
-		return nil, errors.New("failed to refresh tokens")
-	}
-
-	if string(t.Token) != req.Token || string(t.RefreshToken) != req.RefreshToken {
-		log.Default().Println("Tokens do not match with stored")
-		return nil, models.ErrInvalidCreds
+	} else {
+		if string(t.Token) != req.Token || string(t.RefreshToken) != req.RefreshToken {
+			slog.Warn("Tokens do not match with stored", "userID", refreshClaims["sub"], "req", req)
+			return nil, models.ErrInvalidCreds
+		}
 	}
 
 	// Generate new tokens
 	newToken, newRefresh, err := s.generateTokens(&models.User{ID: userID})
 	if err != nil {
-		log.Printf("Failed to generate new tokens: %v", err)
+		slog.Error("Failed to generate tokens", "err", err, "userID", userID)
 		return nil, errors.New("failed to refresh tokens")
 	}
 
@@ -151,18 +151,17 @@ func (s *Service) RefreshToken(ctx context.Context, req *models.RefreshTokenRequ
 		RefreshToken: []byte(newRefresh),
 	})
 	if err != nil {
-		log.Printf("Failed to save new tokens: %v", err)
+		slog.Error("Failed to save new tokens", "err", err)
 		return nil, errors.New("failed to refresh tokens")
 	}
 
-	log.Println("[INFO] Tokens refreshed successfully")
+	slog.Debug("Tokens refreshed successfully", "userID", refreshClaims["sub"])
+
 	return &models.UserLoginResponse{
 		Token:        newToken,
 		RefreshToken: newRefresh,
 	}, nil
 }
-
-var ErrTokenExpired = errors.New("token expired")
 
 // validateToken extracts claims from a JWT token and verifies its signature
 func (s *Service) validateToken(tokenStr string, signingKey []byte) (jwt.MapClaims, error) {
@@ -188,7 +187,7 @@ func (s *Service) validateToken(tokenStr string, signingKey []byte) (jwt.MapClai
 		return nil, fmt.Errorf("token missing 'exp' field")
 	}
 	if time.Now().Unix() > int64(exp) {
-		return nil, ErrTokenExpired
+		return nil, errors.New("token expired")
 	}
 
 	return claims, nil
@@ -204,7 +203,7 @@ func (s *Service) generateTokens(u *models.User) (string, string, error) {
 		"exp": time.Now().Add(24 * time.Hour).Unix(),
 	}).SignedString(signingKey)
 	if err != nil {
-		log.Default().Println("Failed to create token: ", err)
+		slog.Error("Failed to generate token", "err", err, "userID", u.ID)
 		return "", "", err
 	}
 
@@ -214,7 +213,7 @@ func (s *Service) generateTokens(u *models.User) (string, string, error) {
 		"exp": time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}).SignedString(signingKey)
 	if err != nil {
-		log.Default().Println("Failed to create token: ", err)
+		slog.Error("Failed to generate token", "err", err, "userID", u.ID)
 		return "", "", err
 	}
 

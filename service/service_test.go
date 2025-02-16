@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"testing"
 	"time"
 
@@ -337,7 +336,7 @@ func TestRefreshToken_ExpiredRefreshToken(t *testing.T) {
 	}
 
 	res, err := svc.RefreshToken(context.Background(), req)
-	log.Default().Println(userID)
+
 	assert.ErrorIs(t, err, models.ErrTokensExpired)
 	assert.Nil(t, res)
 }

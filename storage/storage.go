@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"log"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	_ "github.com/lib/pq"
@@ -21,7 +21,7 @@ type Storage struct {
 var embedMigrations embed.FS
 
 func (s *Storage) Migrate(cfg *config.Config) {
-	log.Default().Println("Migrating database")
+	slog.Info("Migrating database")
 
 	db, err := sql.Open(
 		"postgres",
@@ -42,7 +42,7 @@ func (s *Storage) Migrate(cfg *config.Config) {
 		panic(err)
 	}
 
-	log.Default().Println("Database migrated")
+	slog.Info("Datebase migrated")
 }
 
 func New(cfg *config.Config) *Storage {
