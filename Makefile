@@ -6,3 +6,6 @@ vet: fmt
 
 run: vet
 	air
+
+sqlc:
+	cd storage && sqlc generate
