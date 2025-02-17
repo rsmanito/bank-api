@@ -8,9 +8,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rsmanito/bank-api/config"
 )
 
-func (s *Server) JWTTokenSuppliedMiddleware(c fiber.Ctx) error {
+func JWTTokenSuppliedMiddleware(c fiber.Ctx) error {
 	h := c.Get("Authorization")
 	if h == "" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing token"})
@@ -25,7 +26,7 @@ func (s *Server) JWTTokenSuppliedMiddleware(c fiber.Ctx) error {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
 
-		return []byte(s.cfg.JWT_SIGNING_KEY), nil
+		return []byte(config.Load().JWT_SIGNING_KEY), nil
 	})
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {

@@ -49,10 +49,13 @@ func (s *Server) registerRoutes() {
 		auth.Post("/login", s.handleLogin)
 		auth.Post("/refresh", s.handleRefreshToken)
 	}
+
 	jwtAutorized := api.Group("")
-	jwtAutorized.Use(s.JWTTokenSuppliedMiddleware)
+	jwtAutorized.Use(JWTTokenSuppliedMiddleware)
+
+	me := jwtAutorized.Group("/me")
 	{
-		jwtAutorized.Get("/me", s.handleGetMe)
+		me.Get("/", s.handleGetMe)
 	}
 }
 
