@@ -15,6 +15,9 @@ type Storage interface {
 	GetUserById(context.Context, pgtype.UUID) (postgres.User, error)
 	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
 	GetUserTokens(context.Context, pgtype.UUID) (postgres.Token, error)
+	GetUserCards(context.Context, pgtype.UUID) ([]postgres.Card, error)
+	CreateCard(context.Context, postgres.CreateCardParams) error
+	CardNumberExists(context.Context, string) (bool, error)
 }
 
 type Service struct {

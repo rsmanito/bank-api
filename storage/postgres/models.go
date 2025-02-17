@@ -5,8 +5,63 @@
 package postgres
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type CardType string
+
+const (
+	CardTypeDEBIT  CardType = "DEBIT"
+	CardTypeCREDIT CardType = "CREDIT"
+)
+
+func (e *CardType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CardType(s)
+	case string:
+		*e = CardType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CardType: %T", src)
+	}
+	return nil
+}
+
+type NullCardType struct {
+	CardType CardType
+	Valid    bool // Valid is true if CardType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCardType) Scan(value interface{}) error {
+	if value == nil {
+		ns.CardType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CardType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCardType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CardType), nil
+}
+
+type Card struct {
+	ID       int64
+	Holder   pgtype.UUID
+	Number   string
+	Title    pgtype.Text
+	Balance  pgtype.Numeric
+	Type     CardType
+	Currency string
+}
 
 type Token struct {
 	UserID       pgtype.UUID

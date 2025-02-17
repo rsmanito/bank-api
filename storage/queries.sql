@@ -28,3 +28,20 @@ DO UPDATE SET
 SELECT *
 FROM tokens
 WHERE user_id = $1;
+
+-- name: GetUserCards :many
+SELECT *
+FROM cards
+WHERE holder = $1;
+
+-- name: CreateCard :exec
+INSERT INTO cards (
+  holder, number, title, type, currency
+) VALUES ( $1, $2, $3, $4, $5 );
+
+-- name: CardNumberExists :one
+SELECT EXISTS(
+  SELECT 1
+  FROM cards
+  WHERE number = $1
+) as exists;

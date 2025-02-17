@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -21,6 +22,13 @@ func (v *StructValidator) Validate(out any) error {
 		for _, err := range err.(validator.ValidationErrors) {
 			field, _ := reflected.FieldByName(err.StructField())
 			jsonTag := field.Tag.Get("json")
+			validateTag := field.Tag.Get("validate")
+
+			var options []string
+			if strings.Contains(validateTag, "oneof=") {
+				options = strings.Split(validateTag, "oneof=")
+			}
+			fmt.Println(options)
 
 			switch err.Tag() {
 			case "required":
@@ -31,6 +39,8 @@ func (v *StructValidator) Validate(out any) error {
 				return fmt.Errorf("invalid value for field: %s", jsonTag)
 			case "min":
 				return fmt.Errorf("%s must be at least %s characters long", jsonTag, err.Param())
+			case "oneof":
+				return fmt.Errorf("invalid value for field: %s, options are: %s", jsonTag, options[1])
 			default:
 				return fmt.Errorf("invalid input: %s", jsonTag)
 			}

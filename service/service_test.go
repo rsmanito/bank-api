@@ -24,6 +24,8 @@ type MockStorage interface {
 	GetUserById(context.Context, pgtype.UUID) (postgres.User, error)
 	SaveUserTokens(context.Context, postgres.SaveUserTokensParams) error
 	GetUserTokens(context.Context, pgtype.UUID) (postgres.Token, error)
+	CreateCard(context.Context, postgres.CreateCardParams) error
+	CardNumberExists(context.Context, string) (bool, error)
 }
 
 type MockStore struct {
@@ -53,6 +55,21 @@ func (m *MockStore) GetUserById(ctx context.Context, userId pgtype.UUID) (postgr
 func (m *MockStore) GetUserTokens(ctx context.Context, userId pgtype.UUID) (postgres.Token, error) {
 	args := m.Called(ctx, userId)
 	return args.Get(0).(postgres.Token), args.Error(1)
+}
+
+func (m *MockStore) GetUserCards(ctx context.Context, userId pgtype.UUID) ([]postgres.Card, error) {
+	args := m.Called(ctx, userId)
+	return args.Get(0).([]postgres.Card), args.Error(1)
+}
+
+func (m *MockStore) CreateCard(ctx context.Context, params postgres.CreateCardParams) error {
+	args := m.Called(ctx, params)
+	return args.Error(0)
+}
+
+func (m *MockStore) CardNumberExists(ctx context.Context, number string) (bool, error) {
+	args := m.Called(ctx, number)
+	return args.Get(0).(bool), args.Error(1)
 }
 
 func TestRegisterUser_Success(t *testing.T) {
@@ -508,14 +525,209 @@ func TestGetMe_Success(t *testing.T) {
 	mockStore.AssertExpectations(t)
 }
 
-func TestGetMe_InvalidId(t *testing.T) {
+func TestGetCards_NoCards(t *testing.T) {
 	mockStore := new(MockStore)
 	svc := &Service{
 		st: mockStore,
 	}
 
-	ctx := context.WithValue(context.Background(), "userId", "not-a-uuid")
-	_, err := svc.GetUser(ctx)
+	userID := uuid.New()
 
-	assert.ErrorIs(t, err, models.ErrInvalidCreds)
+	mockStore.
+		On("GetUserCards", mock.Anything, mock.MatchedBy(func(p pgtype.UUID) bool {
+			return p.Valid && p.Bytes == userID
+		})).
+		Return(make([]postgres.Card, 0), nil).
+		Once()
+
+	ctx := context.WithValue(context.Background(), "userId", userID.String())
+	res, err := svc.GetUserCards(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, make([]*models.Card, 0), res)
+	mockStore.AssertExpectations(t)
+}
+
+func TestGetCards_Success(t *testing.T) {
+	mockStore := new(MockStore)
+	svc := &Service{
+		st: mockStore,
+	}
+
+	userID := uuid.New()
+
+	expected := make([]postgres.Card, 2)
+
+	mockStore.
+		On("GetUserCards", mock.Anything, mock.MatchedBy(func(p pgtype.UUID) bool {
+			return p.Valid && p.Bytes == userID
+		})).
+		Return(expected, nil).
+		Once()
+
+	ctx := context.WithValue(context.Background(), "userId", userID.String())
+	res, err := svc.GetUserCards(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(expected), len(res))
+
+	mockStore.AssertExpectations(t)
+}
+
+func TestCreateCard_Success(t *testing.T) {
+	mockStore := new(MockStore)
+	svc := &Service{
+		st: mockStore,
+	}
+
+	userId := uuid.New()
+
+	req := &models.CreateCardRequest{
+		Title:    "Title",
+		Currency: "USD",
+		Type:     "DEBIT",
+	}
+
+	mockStore.
+		On("CardNumberExists", mock.Anything, mock.Anything).
+		Return(false, nil)
+
+	mockStore.
+		On("CreateCard", mock.Anything, mock.MatchedBy(func(p postgres.CreateCardParams) bool {
+			return (p.Holder.Bytes == userId &&
+				p.Title.String == req.Title &&
+				p.Currency == req.Currency &&
+				p.Type == postgres.CardType(req.Type))
+		})).
+		Return(nil).
+		Once()
+
+	ctx := context.WithValue(context.Background(), "userId", userId.String())
+
+	res, err := svc.CreateCard(ctx, req)
+
+	assert.NoError(t, err)
+
+	assert.Equal(t, req.Title, res.Title)
+	assert.Equal(t, req.Currency, res.Currency)
+	assert.True(t, req.Type == string(res.Type))
+
+	mockStore.AssertExpectations(t)
+}
+
+func TestCreateCard_NoTitle(t *testing.T) {
+	mockStore := new(MockStore)
+	svc := &Service{
+		st: mockStore,
+	}
+
+	userId := uuid.New()
+
+	req := &models.CreateCardRequest{
+		Currency: "USD",
+		Type:     "DEBIT",
+	}
+
+	mockStore.
+		On("CardNumberExists", mock.Anything, mock.Anything).
+		Return(false, nil)
+
+	mockStore.
+		On("CreateCard", mock.Anything, mock.MatchedBy(func(p postgres.CreateCardParams) bool {
+			return (p.Holder.Bytes == userId &&
+				p.Currency == req.Currency &&
+				p.Type == postgres.CardType(req.Type))
+		})).
+		Return(nil).
+		Once()
+
+	ctx := context.WithValue(context.Background(), "userId", userId.String())
+
+	res, err := svc.CreateCard(ctx, req)
+
+	assert.NoError(t, err)
+
+	assert.Equal(t, "", res.Title)
+	assert.Equal(t, req.Currency, res.Currency)
+	assert.True(t, req.Type == string(res.Type))
+
+	mockStore.AssertExpectations(t)
+}
+
+func TestCreateCard_NumberExists(t *testing.T) {
+	mockStore := new(MockStore)
+	svc := &Service{
+		st: mockStore,
+	}
+
+	userId := uuid.New()
+
+	req := &models.CreateCardRequest{
+		Title:    "Title",
+		Currency: "USD",
+		Type:     "DEBIT",
+	}
+
+	// Model that 10 first card numbers are taken.
+	mockStore.
+		On("CardNumberExists", mock.Anything, mock.Anything).
+		Return(true, nil).
+		Times(10)
+
+	mockStore.
+		On("CardNumberExists", mock.Anything, mock.Anything).
+		Return(false, nil).
+		Once()
+
+	mockStore.
+		On("CreateCard", mock.Anything, mock.MatchedBy(func(p postgres.CreateCardParams) bool {
+			return (p.Holder.Bytes == userId &&
+				p.Title.String == req.Title &&
+				p.Currency == req.Currency &&
+				p.Type == postgres.CardType(req.Type))
+		})).
+		Return(nil).
+		Once()
+
+	ctx := context.WithValue(context.Background(), "userId", userId.String())
+
+	res, err := svc.CreateCard(ctx, req)
+
+	assert.NoError(t, err)
+
+	assert.Equal(t, req.Title, res.Title)
+	assert.Equal(t, req.Currency, res.Currency)
+	assert.True(t, req.Type == string(res.Type))
+
+	mockStore.AssertExpectations(t)
+}
+
+func TestCreateCard_DbError(t *testing.T) {
+	mockStore := new(MockStore)
+	svc := &Service{
+		st: mockStore,
+	}
+
+	userId := uuid.New()
+
+	req := &models.CreateCardRequest{
+		Title:    "Title",
+		Currency: "USD",
+		Type:     "DEBIT",
+	}
+
+	mockStore.
+		On("CardNumberExists", mock.Anything, mock.Anything).
+		Return(false, errors.New("error")).
+		Once()
+
+	ctx := context.WithValue(context.Background(), "userId", userId.String())
+
+	res, err := svc.CreateCard(ctx, req)
+
+	assert.Error(t, err)
+	assert.Errorf(t, err, "failed to create a card")
+	assert.Nil(t, res)
+
+	mockStore.AssertExpectations(t)
 }

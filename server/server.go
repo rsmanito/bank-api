@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -18,6 +19,8 @@ type Service interface {
 	LoginUser(context.Context, *models.LoginUserRequest) (*models.UserLoginResponse, error)
 	RefreshToken(context.Context, *models.RefreshTokenRequest) (*models.UserLoginResponse, error)
 	GetUser(context.Context) (*models.User, error)
+	GetUserCards(context.Context) ([]*models.Card, error)
+	CreateCard(context.Context, *models.CreateCardRequest) (*models.Card, error)
 }
 
 type Server struct {
@@ -56,6 +59,8 @@ func (s *Server) registerRoutes() {
 	me := jwtAutorized.Group("/me")
 	{
 		me.Get("/", s.handleGetMe)
+		me.Get("/cards", s.handleGetCards)
+		me.Post("/cards/new", s.handleCreateCard)
 	}
 }
 
@@ -112,4 +117,28 @@ func (s *Server) handleGetMe(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(http.StatusOK).JSON(user)
+}
+
+func (s *Server) handleGetCards(c fiber.Ctx) error {
+	cards, err := s.service.GetUserCards(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"cards": cards})
+}
+
+func (s *Server) handleCreateCard(c fiber.Ctx) error {
+	r := &models.CreateCardRequest{}
+
+	if err := c.Bind().JSON(r); err != nil {
+		slog.Error("err", "err", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	res, err := s.service.CreateCard(c.Context(), r)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(res)
 }

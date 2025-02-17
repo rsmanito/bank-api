@@ -11,6 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cardNumberExists = `-- name: CardNumberExists :one
+SELECT EXISTS(
+  SELECT 1
+  FROM cards
+  WHERE number = $1
+) as exists
+`
+
+func (q *Queries) CardNumberExists(ctx context.Context, number string) (bool, error) {
+	row := q.db.QueryRow(ctx, cardNumberExists, number)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const createCard = `-- name: CreateCard :exec
+INSERT INTO cards (
+  holder, number, title, type, currency
+) VALUES ( $1, $2, $3, $4, $5 )
+`
+
+type CreateCardParams struct {
+	Holder   pgtype.UUID
+	Number   string
+	Title    pgtype.Text
+	Type     CardType
+	Currency string
+}
+
+func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) error {
+	_, err := q.db.Exec(ctx, createCard,
+		arg.Holder,
+		arg.Number,
+		arg.Title,
+		arg.Type,
+		arg.Currency,
+	)
+	return err
+}
+
 const createUser = `-- name: CreateUser :exec
 INSERT INTO users (
   id, first_name, last_name, email, password
@@ -74,6 +114,40 @@ func (q *Queries) GetUserById(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.Password,
 	)
 	return i, err
+}
+
+const getUserCards = `-- name: GetUserCards :many
+SELECT id, holder, number, title, balance, type, currency
+FROM cards
+WHERE holder = $1
+`
+
+func (q *Queries) GetUserCards(ctx context.Context, holder pgtype.UUID) ([]Card, error) {
+	rows, err := q.db.Query(ctx, getUserCards, holder)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Card
+	for rows.Next() {
+		var i Card
+		if err := rows.Scan(
+			&i.ID,
+			&i.Holder,
+			&i.Number,
+			&i.Title,
+			&i.Balance,
+			&i.Type,
+			&i.Currency,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserTokens = `-- name: GetUserTokens :one
